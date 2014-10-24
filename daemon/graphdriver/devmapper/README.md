@@ -100,6 +100,19 @@ Here is the list of supported options:
 
     ``docker -d --storage-opt dm.mountopt=nodiscard``
 
+ *  `dm.thinpooldev`
+
+    Specifies a custom blockdevice to use for the thin pool.
+
+    If using a block device for device mapper storage, ideally lvm2
+    would be used to create/manage the thin-pool volume that is then
+    handed to docker to exclusively create/manage the thin and thin
+    snapshot volumes needed for it's containers.
+
+    Example use:
+
+    ``docker -d --storage-opt dm.thinpooldev=thin-pool``
+
  *  `dm.datadev`
 
     Specifies a custom blockdevice to use for data for the thin pool.

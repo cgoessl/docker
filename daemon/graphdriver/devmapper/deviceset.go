@@ -81,6 +81,7 @@ type DeviceSet struct {
 	metadataDevice       string
 	doBlkDiscard         bool
 	thinpBlockSize       uint32
+	thinPoolDevice       string
 }
 
 type DiskUsage struct {
@@ -143,7 +144,11 @@ func (devices *DeviceSet) oldMetadataFile() string {
 }
 
 func (devices *DeviceSet) getPoolName() string {
-	return devices.devicePrefix + "-pool"
+	if devices.thinPoolDevice == "" {
+		return devices.devicePrefix + "-pool"
+	} else {
+		return devices.thinPoolDevice
+	}
 }
 
 func (devices *DeviceSet) getPoolDevName() string {
@@ -396,7 +401,20 @@ func (devices *DeviceSet) setupBaseImage() error {
 		}
 	}
 
-	log.Debugf("Initializing base device-manager snapshot")
+	if devices.thinPoolDevice != "" {
+		_, transactionId, dataUsed, _, _, _, err := devices.poolStatus()
+		if err == nil {
+			if dataUsed != 0 {
+				return fmt.Errorf("Unable to take ownership of thin-pool (%s) that already has used data blocks",
+					devices.thinPoolDevice)
+			} else if transactionId != 0 {
+				return fmt.Errorf("Unable to take ownership of thin-pool (%s) with non-zero transaction Id",
+					devices.thinPoolDevice)
+			}
+		}
+	}
+
+	log.Debugf("Initializing base device-mapper thin snapshot")
 
 	id := devices.nextDeviceId
 
@@ -415,7 +433,7 @@ func (devices *DeviceSet) setupBaseImage() error {
 		return err
 	}
 
-	log.Debugf("Creating filesystem on base device-manager snapshot")
+	log.Debugf("Creating filesystem on base device-mapper thin snapshot")
 
 	if err = devices.activateDeviceIfNeeded(info); err != nil {
 		return err
@@ -565,7 +583,7 @@ func (devices *DeviceSet) initDevmapper(doInit bool) error {
 	devices.devicePrefix = fmt.Sprintf("docker-%d:%d-%d", major(sysSt.Dev), minor(sysSt.Dev), sysSt.Ino)
 	log.Debugf("Generated prefix: %s", devices.devicePrefix)
 
-	// Check for the existence of the device <prefix>-pool
+	// Check for the existence of the thin-pool device
 	log.Debugf("Checking for existence of the pool '%s'", devices.getPoolName())
 	info, err := getInfo(devices.getPoolName())
 	if info == nil {
@@ -584,7 +602,7 @@ func (devices *DeviceSet) initDevmapper(doInit bool) error {
 	createdLoopback := false
 
 	// If the pool doesn't exist, create it
-	if info.Exists == 0 {
+	if info.Exists == 0 && devices.thinPoolDevice == "" {
 		log.Debugf("Pool doesn't exist. Creating it.")
 
 		var (
@@ -942,11 +960,13 @@ func (devices *DeviceSet) Shutdown() error {
 		info.lock.Unlock()
 	}
 
-	devices.Lock()
-	if err := devices.deactivatePool(); err != nil {
-		log.Debugf("Shutdown deactivate pool , error: %s", err)
+	if devices.thinPoolDevice == "" {
+		devices.Lock()
+		if err := devices.deactivatePool(); err != nil {
+			log.Debugf("Shutdown deactivate pool , error: %s", err)
+		}
+		devices.Unlock()
 	}
-	devices.Unlock()
 
 	return nil
 }
@@ -1228,6 +1248,8 @@ func NewDeviceSet(root string, doInit bool, options []string) (*DeviceSet, error
 			devices.metadataDevice = val
 		case "dm.datadev":
 			devices.dataDevice = val
+		case "dm.thinpooldev":
+			devices.thinPoolDevice = strings.TrimPrefix(val, "/dev/mapper/")
 		case "dm.blkdiscard":
 			foundBlkDiscard = true
 			devices.doBlkDiscard, err = strconv.ParseBool(val)
