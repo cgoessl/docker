@@ -87,6 +87,7 @@ const (
 	DmUdevDisableDiskRulesFlag      = C.DM_UDEV_DISABLE_DISK_RULES_FLAG
 	DmUdevDisableOtherRulesFlag     = C.DM_UDEV_DISABLE_OTHER_RULES_FLAG
 	DmUdevLowPriorityFlag           = C.DM_UDEV_LOW_PRIORITY_FLAG
+	DmSubsystemUdevFlag0            = C.DM_SUBSYSTEM_UDEV_FLAG0
 )
 
 var (
@@ -107,6 +108,7 @@ var (
 	DmTaskSetName          = dmTaskSetNameFct
 	DmTaskSetRo            = dmTaskSetRoFct
 	DmTaskSetSector        = dmTaskSetSectorFct
+	DmTaskSetUuid          = dmTaskSetUuidFct
 	DmUdevWait             = dmUdevWaitFct
 	LogWithErrnoInit       = logWithErrnoInitFct
 )
@@ -144,6 +146,13 @@ func dmTaskSetMessageFct(task *CDmTask, message string) int {
 
 func dmTaskSetSectorFct(task *CDmTask, sector uint64) int {
 	return int(C.dm_task_set_sector((*C.struct_dm_task)(task), C.uint64_t(sector)))
+}
+
+func dmTaskSetUuidFct(task *CDmTask, uuid string) int {
+	Cuuid := C.CString(uuid)
+	defer free(Cuuid)
+
+	return int(C.dm_task_set_uuid((*C.struct_dm_task)(task), Cuuid))
 }
 
 func dmTaskSetCookieFct(task *CDmTask, cookie *uint, flags uint16) int {

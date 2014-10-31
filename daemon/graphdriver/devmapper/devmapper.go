@@ -54,6 +54,7 @@ var (
 	ErrTaskGetDeps            = errors.New("dm_task_get_deps failed")
 	ErrTaskGetInfo            = errors.New("dm_task_get_info failed")
 	ErrTaskGetDriverVersion   = errors.New("dm_task_get_driver_version failed")
+	ErrTaskSetUuid            = errors.New("dm_task_set_uuid failed")
 	ErrTaskSetCookie          = errors.New("dm_task_set_cookie failed")
 	ErrNilCookie              = errors.New("cookie ptr can't be nil")
 	ErrAttachLoopbackDevice   = errors.New("loopback mounting failed")
@@ -138,6 +139,13 @@ func (t *Task) SetMessage(message string) error {
 func (t *Task) SetSector(sector uint64) error {
 	if res := DmTaskSetSector(t.unmanaged, sector); res != 1 {
 		return ErrTaskSetSector
+	}
+	return nil
+}
+
+func (t *Task) SetUuid(uuid string) error {
+	if res := DmTaskSetUuid(t.unmanaged, uuid); res != 1 {
+		return ErrTaskSetUuid
 	}
 	return nil
 }
@@ -602,6 +610,13 @@ func activateDevice(poolName string, name string, deviceId int, size uint64, isS
 	var flags uint16 = 0
 	if isSnapshot {
 		flags |= DmUdevLowPriorityFlag
+	} else {
+		// establish LVM-docker-* DM_UUID for base thin volume ...
+		if err := task.SetUuid("LVM-docker-base00000000000000000000000000000000000000000000000000000"); err != nil {
+			return fmt.Errorf("Can't set uuid %s", err)
+		}
+		// ... so lvm's "noscan" udev rule can be used during zeroing (below)
+		flags |= DmSubsystemUdevFlag0
 	}
 	if err := task.SetCookie(&cookie, flags); err != nil {
 		return fmt.Errorf("Can't set cookie %s", err)
@@ -612,6 +627,22 @@ func activateDevice(poolName string, name string, deviceId int, size uint64, isS
 	}
 
 	UdevWait(cookie)
+
+	if !isSnapshot {
+		// must zero first 4K of base thin device since thin-pool is using skip_block_zeroing
+		path := fmt.Sprintf("/dev/mapper/%s", name)
+		thin_device, err := os.OpenFile(path, os.O_RDWR, 0)
+		if err != nil {
+			return fmt.Errorf("Error opening base thin volume for zeroing %s", err)
+		}
+		// establish 4K buffer in memory and write it to disk
+		buf := make([]byte, 4096)
+		if _, err := thin_device.Write(buf); err != nil {
+			thin_device.Close()
+			return fmt.Errorf("Error zeroing first 4K of the base thin volume %s", err)
+		}
+		thin_device.Close()
+	}
 
 	return nil
 }
