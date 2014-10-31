@@ -284,7 +284,8 @@ func (devices *DeviceSet) activateDeviceIfNeeded(info *DevInfo) error {
 		return nil
 	}
 
-	return activateDevice(devices.getPoolDevName(), info.Name(), info.DeviceId, info.Size)
+	var isSnapshot bool = (info.Hash != "")
+	return activateDevice(devices.getPoolDevName(), info.Name(), info.DeviceId, info.Size, isSnapshot)
 }
 
 func (devices *DeviceSet) createFilesystem(info *DevInfo) error {

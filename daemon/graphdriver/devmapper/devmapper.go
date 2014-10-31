@@ -584,7 +584,7 @@ func removeDevice(name string) error {
 	return nil
 }
 
-func activateDevice(poolName string, name string, deviceId int, size uint64) error {
+func activateDevice(poolName string, name string, deviceId int, size uint64, isSnapshot bool) error {
 	task, err := createTask(DeviceCreate, name)
 	if task == nil {
 		return err
@@ -599,7 +599,11 @@ func activateDevice(poolName string, name string, deviceId int, size uint64) err
 	}
 
 	var cookie uint = 0
-	if err := task.SetCookie(&cookie, 0); err != nil {
+	var flags uint16 = 0
+	if isSnapshot {
+		flags |= DmUdevLowPriorityFlag
+	}
+	if err := task.SetCookie(&cookie, flags); err != nil {
 		return fmt.Errorf("Can't set cookie %s", err)
 	}
 
